@@ -114,9 +114,11 @@ export async function getInbodyScans() {
 }
 
 export async function addInbodyScan(data) {
+  const username = getStoredUsername()
+  const user = await getUser(username)
   const rows = await request('/inbody_scans', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, user_id: user.id }),
     headers: { 'Prefer': 'return=representation' },
   })
   return rows?.[0] ?? null
