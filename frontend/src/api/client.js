@@ -107,6 +107,34 @@ export async function clearMeasurements() {
   return request('/measurements?id=gt.0', { method: 'DELETE' })
 }
 
+// ── InBody scans ────────────────────────────────────────────────────────────
+
+export async function getInbodyScans() {
+  return request('/inbody_scans?order=scan_date.asc')
+}
+
+export async function addInbodyScan(data) {
+  const rows = await request('/inbody_scans', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: { 'Prefer': 'return=representation' },
+  })
+  return rows?.[0] ?? null
+}
+
+export async function updateInbodyScan(id, data) {
+  const rows = await request(`/inbody_scans?id=eq.${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+    headers: { 'Prefer': 'return=representation' },
+  })
+  return rows?.[0] ?? null
+}
+
+export async function deleteInbodyScan(id) {
+  return request(`/inbody_scans?id=eq.${id}`, { method: 'DELETE' })
+}
+
 // ── Overrides de mapping musculaire ────────────────────────────────────────
 
 export async function getMappingOverrides() {

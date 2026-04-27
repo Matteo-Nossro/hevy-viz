@@ -14,10 +14,11 @@ Application web multi-utilisateurs pour visualiser et analyser vos exports CSV d
 - **Rapport mensuel** : KPI, comparaison mois précédent / année précédente.
 - **Calendrier** mensuel avec records.
 - **Mensurations corporelles** (si `measurement_data.csv` importé).
+- **InBody** : saisie manuelle des scans d'analyse de composition corporelle, comparaison entre scans, graphiques d'évolution avec zones normales, analyse segmentaire droite/gauche avec détection d'asymétrie.
 
 ## Stack
 
-- **Frontend** : Vue 3 (Composition API) + Vite + Tailwind CSS + Chart.js + PapaParse
+- **Frontend** : Vue 3 (Composition API) + Vite + Tailwind CSS + Chart.js + chartjs-plugin-annotation + PapaParse
 - **API** : PostgREST v12 (auto-généré depuis le schéma PostgreSQL)
 - **BDD** : PostgreSQL 16 avec Row Level Security
 - **Infra** : Docker Compose (4 conteneurs) — nginx, postgrest, postgres, adminer
@@ -116,7 +117,7 @@ hevy-viz/
 │   ├── nginx.conf             # Serve SPA + proxy /api → postgrest
 │   ├── src/
 │   │   ├── api/client.js      # Client API centralisé (X-Username header)
-│   │   ├── composables/       # useWorkoutData, useMeasurementData, useExerciseMapping
+│   │   ├── composables/       # useWorkoutData, useMeasurementData, useExerciseMapping, useInbodyData
 │   │   ├── views/             # UserPickerView + vues métier
 │   │   └── config/muscleMapping.js
 │   └── vite.config.js         # Proxy /api en dev
@@ -128,6 +129,7 @@ hevy-viz/
     │   ├── 03_functions.sql   # RPC import_workout_sets, import_measurements
     │   └── 04_set_password.sh # ALTER ROLE authenticator PASSWORD '...'
     └── migrations/            # Évolutions de schéma post-déploiement
+    │       └── 001_inbody_scans.sql
 ```
 
 ### Auth via header X-Username + RLS
@@ -156,11 +158,19 @@ docker exec -i hevy-viz-db-1 psql -U hevy hevy_viz < backup.sql
 
 ## Évolutions du schéma
 
-Créez un fichier numéroté dans `db/migrations/` et appliquez-le manuellement :
+Créez un fichier numéroté dans `db/migrations/` et appliquez-le manuellement sur une instance déjà déployée :
 
 ```bash
-docker exec -i hevy-viz-db-1 psql -U hevy hevy_viz < db/migrations/001_add_notes.sql
+docker exec -i hevy-viz-db-1 psql -U hevy hevy_viz < db/migrations/001_inbody_scans.sql
 ```
+
+> Les scripts dans `db/init/` ne s'exécutent qu'au **premier boot** (volume vide). Pour un déploiement existant, utilisez toujours `db/migrations/`.
+
+### Migrations disponibles
+
+| Fichier | Description |
+|---|---|
+| `001_inbody_scans.sql` | Table `api.inbody_scans` — suivi des scans InBody (composition corporelle, données segmentaires, eau corporelle, métabolisme) |
 
 ## Mise à jour (Portainer Stack Git)
 
