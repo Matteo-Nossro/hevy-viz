@@ -1,6 +1,9 @@
 const BASE = '/api'
 const USERNAME_KEY = 'hevy_username'
 
+// Cache username → user_id chargé au premier appel cross-user
+const userIdCache = new Map()
+
 export function getStoredUsername() {
   return localStorage.getItem(USERNAME_KEY)
 }
@@ -71,7 +74,8 @@ export async function createUser(data) {
 // ── Workout sets ────────────────────────────────────────────────────────────
 
 export async function getWorkoutSets() {
-  return request('/workout_sets?order=start_time')
+  const id = await resolveUserId(getStoredUsername())
+  return request(`/workout_sets?user_id=eq.${id}&order=start_time`)
 }
 
 export async function importWorkoutSets(rows) {
@@ -92,7 +96,8 @@ export async function clearWorkoutSets() {
 // ── Measurements ────────────────────────────────────────────────────────────
 
 export async function getMeasurements() {
-  return request('/measurements?order=date')
+  const id = await resolveUserId(getStoredUsername())
+  return request(`/measurements?user_id=eq.${id}&order=date`)
 }
 
 export async function importMeasurements(rows) {
@@ -110,7 +115,8 @@ export async function clearMeasurements() {
 // ── InBody scans ────────────────────────────────────────────────────────────
 
 export async function getInbodyScans() {
-  return request('/inbody_scans?order=scan_date.asc')
+  const id = await resolveUserId(getStoredUsername())
+  return request(`/inbody_scans?user_id=eq.${id}&order=scan_date.asc`)
 }
 
 export async function addInbodyScan(data) {
@@ -173,4 +179,29 @@ export async function deleteMappingOverride(exerciseTitle) {
     `/exercise_mapping_overrides?exercise_title=eq.${encodeURIComponent(exerciseTitle)}`,
     { method: 'DELETE' },
   )
+}
+
+// ── Requêtes cross-user (lecture libre après migration 002) ─────────────────
+
+async function resolveUserId(username) {
+  if (userIdCache.has(username)) return userIdCache.get(username)
+  const user = await getUser(username)
+  if (!user) throw new Error(`User not found: ${username}`)
+  userIdCache.set(username, user.id)
+  return user.id
+}
+
+export async function getWorkoutSetsForUser(username) {
+  const id = await resolveUserId(username)
+  return request(`/workout_sets?user_id=eq.${id}&order=start_time`)
+}
+
+export async function getInbodyScansForUser(username) {
+  const id = await resolveUserId(username)
+  return request(`/inbody_scans?user_id=eq.${id}&order=scan_date.asc`)
+}
+
+export async function getMeasurementsForUser(username) {
+  const id = await resolveUserId(username)
+  return request(`/measurements?user_id=eq.${id}&order=date`)
 }

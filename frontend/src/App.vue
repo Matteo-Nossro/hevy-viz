@@ -5,6 +5,8 @@ import { useMeasurementData } from './composables/useMeasurementData'
 import { useInbodyData } from './composables/useInbodyData'
 import { getStoredUsername, clearStoredUsername, getUser } from './api/client'
 import { useExerciseMapping } from './composables/useExerciseMapping'
+import { useUpdateAvailable } from './composables/useUpdateAvailable'
+import { useOnlineStatus } from './composables/useOnlineStatus'
 import UserPickerView from './views/UserPickerView.vue'
 import ImportView from './views/ImportView.vue'
 import StatsView from './views/StatsView.vue'
@@ -17,6 +19,7 @@ import CalendarView from './views/CalendarView.vue'
 import ReportView from './views/ReportView.vue'
 import CorpoView from './views/CorpoView.vue'
 import InbodyView from './views/InbodyView.vue'
+import CompareView from './views/CompareView.vue'
 
 // ── User state ──────────────────────────────────────────────────────────────
 const currentUser = ref(null)
@@ -70,6 +73,9 @@ const measurement = useMeasurementData()
 const mapping = useExerciseMapping()
 const inbody = useInbodyData()
 
+const { updateAvailable, applyUpdate } = useUpdateAvailable()
+const { isOnline } = useOnlineStatus()
+
 const currentTab = ref('import')
 
 watch(() => workout.loaded.value, (val) => {
@@ -97,11 +103,49 @@ const tabs = computed(() => {
     label: 'InBody',
     icon: 'M12 3c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zM6 20v-2c0-2.21 1.79-4 4-4h4c2.21 0 4 1.79 4 4v2H6z',
   })
+  list.push({
+    id: 'compare',
+    label: 'Comparer',
+    icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
+  })
   return list
 })
 </script>
 
 <template>
+<div>
+  <!-- Bannière offline -->
+  <Transition name="banner">
+    <div
+      v-if="!isOnline"
+      class="fixed top-0 inset-x-0 z-50 flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium bg-amber-500/90 text-amber-950 backdrop-blur-sm"
+    >
+      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0119 12.55M5 12.55a10.94 10.94 0 015.17-2.39M10.71 5.05A16 16 0 0122.56 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Mode hors ligne — affichage des dernières données chargées
+    </div>
+  </Transition>
+
+  <!-- Toast nouvelle version -->
+  <Transition name="toast">
+    <div
+      v-if="updateAvailable"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg bg-surface border border-border text-sm whitespace-nowrap"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 text-accent flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="text-text-muted">Une nouvelle version est disponible.</span>
+      <button
+        @click="applyUpdate"
+        class="text-accent font-semibold hover:text-accent/80 transition-colors"
+      >
+        Mettre à jour
+      </button>
+    </div>
+  </Transition>
+
   <!-- Spinner pendant vérification initiale -->
   <div v-if="userLoading" class="min-h-screen bg-bg flex items-center justify-center">
     <div class="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
@@ -239,8 +283,10 @@ const tabs = computed(() => {
       <CalendarView    v-else-if="currentTab === 'calendar'"    :workout="workout" />
       <CorpoView       v-else-if="currentTab === 'corpo'"       :measurement="measurement" />
       <InbodyView      v-else-if="currentTab === 'inbody'"      :inbody="inbody" />
+      <CompareView     v-else-if="currentTab === 'compare'"    :workout="workout" :current-user="currentUser" />
     </main>
   </div>
+</div>
 </template>
 
 <style scoped>
@@ -252,5 +298,25 @@ const tabs = computed(() => {
 .mobile-menu-leave-to {
   opacity: 0;
   transform: translateY(-8px);
+}
+
+.banner-enter-active,
+.banner-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.banner-enter-from,
+.banner-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(12px);
 }
 </style>
