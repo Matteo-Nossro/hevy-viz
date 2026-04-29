@@ -34,14 +34,12 @@ jobs:
             ${{ secrets.PORTAINER_URL }}/api/stacks | \
             jq -r '.[] | select(.Name=="hevy-viz") | .Id')
 
-          curl -sk -X POST \
-            -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
-            "${{ secrets.PORTAINER_URL }}/api/stacks/$STACK_ID/images/pull?endpointId=1"
+          STACK_CONTENT=$(jq -Rs . < docker-compose.yml)
 
           curl -sk -X PUT \
             -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"pullImage": true, "prune": false}' \
+            -d "{\"pullImage\": true, \"prune\": false, \"stackFileContent\": $STACK_CONTENT}" \
             "${{ secrets.PORTAINER_URL }}/api/stacks/$STACK_ID?endpointId=1"
 
       - name: Nettoyage
