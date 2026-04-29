@@ -16,16 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Login to GHCR
-        run: echo "${{ secrets.CR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Build & Push image frontend
+      - name: Build frontend image
         run: |
           docker build \
             --no-cache \
             -t ghcr.io/matteo-nossro/hevy-viz-frontend:latest \
             ./frontend
-          docker push ghcr.io/matteo-nossro/hevy-viz-frontend:latest
 
       - name: Deploy via Portainer API
         run: |
@@ -36,11 +32,19 @@ jobs:
 
           STACK_CONTENT=$(jq -Rs . < docker-compose.yml)
 
+          # pullImage: false — l'image vient d'être buildée localement sur cette
+          # machine (runner self-hosted = même démon Docker que Portainer).
+          # Un pull GHCR échouerait car Portainer n'a pas les credentials GHCR.
           curl -sk -X PUT \
             -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d "{\"pullImage\": true, \"prune\": false, \"stackFileContent\": $STACK_CONTENT}" \
+            -d "{\"pullImage\": false, \"prune\": false, \"stackFileContent\": $STACK_CONTENT}" \
             "${{ secrets.PORTAINER_URL }}/api/stacks/$STACK_ID?endpointId=1"
+
+      - name: Push to GHCR (historique)
+        run: |
+          echo "${{ secrets.CR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push ghcr.io/matteo-nossro/hevy-viz-frontend:latest
 
       - name: Nettoyage
         if: always()
