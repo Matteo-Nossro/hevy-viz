@@ -52,3 +52,5 @@ services:
 
 volumes:
   db_data:
+    external: true
+    name: 21_db_data
