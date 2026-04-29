@@ -87,10 +87,14 @@ const periodBounds = computed(() => {
   } else {
     let min = end
     for (const u of selectedUsers.value) {
-      const s = usersDataMap.value[u]?.sessions
+      const userData = usersDataMap.value[u]
+      const s = userData?.sessions
       if (s?.length && s[0].date < min) min = s[0].date
+      const scans = userData?.scans
+      if (scans?.length && scans[0].scan_date < min) min = scans[0].scan_date
     }
     start = new Date(min)
+    start.setHours(0, 0, 0, 0)
   }
   start.setHours(0, 0, 0, 0)
   return { start, end }
