@@ -1,17 +1,24 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { listUsers, createUser, storeUsername } from '../api/client'
+import { ref, onMounted, computed } from 'vue'
+import { listUsers, login, register, bootstrapPassword } from '../api/client'
 
 const emit = defineEmits(['user-selected'])
 
+// État principal
 const users = ref([])
 const loading = ref(true)
 const error = ref(null)
-const showCreateModal = ref(false)
-const creating = ref(false)
-const createError = ref(null)
-const newUsername = ref('')
-const newDisplayName = ref('')
+
+// Modal d'auth (3 modes : login / register / bootstrap)
+const modalMode = ref(null)            // 'login' | 'register' | 'bootstrap' | null
+const modalUser = ref(null)            // user sélectionné (login/bootstrap)
+const submitting = ref(false)
+const modalError = ref(null)
+const formUsername = ref('')
+const formDisplayName = ref('')
+const formPassword = ref('')
+const formPasswordConfirm = ref('')
+const showPassword = ref(false)
 
 const USERNAME_RE = /^[a-zA-Z0-9_-]{3,50}$/
 
@@ -29,40 +36,91 @@ async function loadUsers() {
   }
 }
 
-function selectUser(user) {
-  storeUsername(user.username)
-  emit('user-selected', user)
+function openLogin(user) {
+  modalUser.value = user
+  modalMode.value = user.has_password ? 'login' : 'bootstrap'
+  formUsername.value = user.username
+  formPassword.value = ''
+  formPasswordConfirm.value = ''
+  modalError.value = null
 }
 
-function openCreateModal() {
-  newUsername.value = ''
-  newDisplayName.value = ''
-  createError.value = null
-  showCreateModal.value = true
+function openRegister() {
+  modalUser.value = null
+  modalMode.value = 'register'
+  formUsername.value = ''
+  formDisplayName.value = ''
+  formPassword.value = ''
+  formPasswordConfirm.value = ''
+  modalError.value = null
 }
 
-async function submitCreate() {
-  createError.value = null
-  if (!USERNAME_RE.test(newUsername.value)) {
-    createError.value = 'Nom d\'utilisateur invalide (3-50 caractères, lettres/chiffres/_/-).'
+function closeModal() {
+  modalMode.value = null
+  modalUser.value = null
+  formPassword.value = ''
+  formPasswordConfirm.value = ''
+}
+
+const modalTitle = computed(() => {
+  if (modalMode.value === 'login') return `Connexion — ${modalUser.value?.display_name || modalUser.value?.username}`
+  if (modalMode.value === 'register') return 'Créer un profil'
+  if (modalMode.value === 'bootstrap') return `Définir un mot de passe — ${modalUser.value?.display_name || modalUser.value?.username}`
+  return ''
+})
+
+const needsConfirm = computed(() => modalMode.value !== 'login')
+
+async function submit() {
+  modalError.value = null
+
+  if (modalMode.value === 'register') {
+    if (!USERNAME_RE.test(formUsername.value.trim())) {
+      modalError.value = 'Nom d\'utilisateur invalide (3-50 caractères, lettres/chiffres/_/-).'
+      return
+    }
+  }
+  if (formPassword.value.length < 8) {
+    modalError.value = 'Le mot de passe doit faire au moins 8 caractères.'
     return
   }
-  creating.value = true
+  if (needsConfirm.value && formPassword.value !== formPasswordConfirm.value) {
+    modalError.value = 'Les mots de passe ne correspondent pas.'
+    return
+  }
+
+  submitting.value = true
   try {
-    const user = await createUser({
-      username: newUsername.value.trim(),
-      display_name: newDisplayName.value.trim() || null,
+    let session
+    if (modalMode.value === 'login') {
+      session = await login(formUsername.value.trim(), formPassword.value)
+    } else if (modalMode.value === 'register') {
+      session = await register(
+        formUsername.value.trim(),
+        formDisplayName.value.trim() || null,
+        formPassword.value,
+      )
+    } else if (modalMode.value === 'bootstrap') {
+      session = await bootstrapPassword(formUsername.value.trim(), formPassword.value)
+    }
+    closeModal()
+    emit('user-selected', {
+      id: session.user_id,
+      username: session.username,
+      display_name: session.display_name,
     })
-    showCreateModal.value = false
-    selectUser(user)
   } catch (e) {
-    if (e.status === 409) {
-      createError.value = 'Ce nom d\'utilisateur est déjà pris.'
+    if (e.status === 401 || /Invalid credentials/i.test(e.message)) {
+      modalError.value = 'Mot de passe incorrect.'
+    } else if (e.status === 409 || /duplicate|unique/i.test(e.message)) {
+      modalError.value = 'Ce nom d\'utilisateur est déjà pris.'
+    } else if (e.status === 429) {
+      modalError.value = 'Trop de tentatives, réessayez dans un instant.'
     } else {
-      createError.value = 'Erreur lors de la création : ' + e.message
+      modalError.value = e.message || 'Erreur inattendue.'
     }
   } finally {
-    creating.value = false
+    submitting.value = false
   }
 }
 </script>
@@ -109,13 +167,16 @@ async function submitCreate() {
         <button
           v-for="user in users"
           :key="user.username"
-          @click="selectUser(user)"
+          @click="openLogin(user)"
           class="w-full soft-card p-4 text-left hover:bg-surface-hover transition-colors group"
         >
           <div class="flex items-center justify-between">
             <div>
               <p class="font-medium text-sm">{{ user.display_name || user.username }}</p>
               <p v-if="user.display_name" class="text-text-faint text-xs mt-0.5">@{{ user.username }}</p>
+              <p v-if="!user.has_password" class="text-amber-400 text-xs mt-0.5">
+                Mot de passe à définir
+              </p>
             </div>
             <svg viewBox="0 0 24 24" class="w-4 h-4 text-text-faint group-hover:text-accent transition-colors" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 18l6-6-6-6"/>
@@ -125,54 +186,108 @@ async function submitCreate() {
       </div>
 
       <!-- Bouton créer -->
-      <button v-if="!loading" @click="openCreateModal" class="btn btn-primary w-full">
+      <button v-if="!loading" @click="openRegister" class="btn btn-primary w-full">
         + Nouveau profil
       </button>
     </div>
 
-    <!-- Modal création -->
-    <div v-if="showCreateModal"
+    <!-- Modal auth -->
+    <div v-if="modalMode"
       class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4 z-50"
-      @click.self="showCreateModal = false"
+      @click.self="closeModal"
     >
       <div class="soft-card w-full max-w-sm p-6">
-        <h2 class="font-semibold text-base mb-4">Créer un profil</h2>
+        <h2 class="font-semibold text-base mb-4">{{ modalTitle }}</h2>
+
+        <p v-if="modalMode === 'bootstrap'" class="text-text-muted text-xs mb-3">
+          Ce profil n'a pas encore de mot de passe. Définissez-en un pour sécuriser vos données.
+        </p>
 
         <div class="space-y-3 mb-4">
+          <!-- Register only : username + display name -->
+          <template v-if="modalMode === 'register'">
+            <div>
+              <label class="text-xs text-text-muted mb-1 block">Nom d'utilisateur <span class="text-danger">*</span></label>
+              <input
+                v-model="formUsername"
+                type="text"
+                placeholder="ex: guillaume"
+                pattern="[a-zA-Z0-9_\-]{3,50}"
+                class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                autocomplete="username"
+                autofocus
+              />
+              <p class="text-xs text-text-faint mt-1">3-50 caractères, lettres, chiffres, _ ou -</p>
+            </div>
+            <div>
+              <label class="text-xs text-text-muted mb-1 block">Nom affiché <span class="text-text-faint">(optionnel)</span></label>
+              <input
+                v-model="formDisplayName"
+                type="text"
+                placeholder="ex: Guillaume"
+                class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                autocomplete="name"
+              />
+            </div>
+          </template>
+
+          <!-- Password (tous les modes) -->
           <div>
-            <label class="text-xs text-text-muted mb-1 block">Nom d'utilisateur <span class="text-danger">*</span></label>
-            <input
-              v-model="newUsername"
-              type="text"
-              placeholder="ex: guillaume"
-              pattern="[a-zA-Z0-9_\-]{3,50}"
-              class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-              @keyup.enter="submitCreate"
-              autofocus
-            />
-            <p class="text-xs text-text-faint mt-1">3-50 caractères, lettres, chiffres, _ ou -</p>
+            <label class="text-xs text-text-muted mb-1 block">
+              {{ modalMode === 'login' ? 'Mot de passe' : 'Nouveau mot de passe' }}
+              <span class="text-danger">*</span>
+            </label>
+            <div class="relative">
+              <input
+                v-model="formPassword"
+                :type="showPassword ? 'text' : 'password'"
+                :placeholder="modalMode === 'login' ? '••••••••' : 'Min. 8 caractères'"
+                class="w-full bg-bg border border-border rounded-lg px-3 py-2 pr-10 text-sm focus:border-accent focus:outline-none"
+                :autocomplete="modalMode === 'login' ? 'current-password' : 'new-password'"
+                :autofocus="modalMode !== 'register'"
+                @keyup.enter="submit"
+              />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                class="absolute inset-y-0 right-0 px-3 text-text-faint hover:text-text"
+                :aria-label="showPassword ? 'Masquer' : 'Afficher'"
+              >
+                <svg v-if="!showPassword" viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg v-else viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24M1 1l22 22"/>
+                </svg>
+              </button>
+            </div>
           </div>
-          <div>
-            <label class="text-xs text-text-muted mb-1 block">Nom affiché <span class="text-text-faint">(optionnel)</span></label>
+
+          <!-- Confirm (sauf login) -->
+          <div v-if="needsConfirm">
+            <label class="text-xs text-text-muted mb-1 block">Confirmer le mot de passe <span class="text-danger">*</span></label>
             <input
-              v-model="newDisplayName"
-              type="text"
-              placeholder="ex: Guillaume"
+              v-model="formPasswordConfirm"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="Retapez le mot de passe"
               class="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-              @keyup.enter="submitCreate"
+              autocomplete="new-password"
+              @keyup.enter="submit"
             />
           </div>
         </div>
 
-        <div v-if="createError" class="text-danger text-xs mb-3">{{ createError }}</div>
+        <div v-if="modalError" class="text-danger text-xs mb-3">{{ modalError }}</div>
 
         <div class="flex gap-2">
-          <button @click="showCreateModal = false" class="btn btn-ghost flex-1" :disabled="creating">
+          <button @click="closeModal" class="btn btn-ghost flex-1" :disabled="submitting">
             Annuler
           </button>
-          <button @click="submitCreate" class="btn btn-primary flex-1" :disabled="creating">
-            <span v-if="creating" class="inline-block w-4 h-4 border-2 border-bg border-t-transparent rounded-full animate-spin mr-1"></span>
-            Créer
+          <button @click="submit" class="btn btn-primary flex-1" :disabled="submitting">
+            <span v-if="submitting" class="inline-block w-4 h-4 border-2 border-bg border-t-transparent rounded-full animate-spin mr-1"></span>
+            <span v-if="modalMode === 'login'">Se connecter</span>
+            <span v-else-if="modalMode === 'register'">Créer</span>
+            <span v-else>Définir</span>
           </button>
         </div>
       </div>

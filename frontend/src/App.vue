@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useWorkoutData } from './composables/useWorkoutData'
 import { useMeasurementData } from './composables/useMeasurementData'
 import { useInbodyData } from './composables/useInbodyData'
-import { getStoredUsername, clearStoredUsername, getUser } from './api/client'
+import { checkSession, logout as apiLogout } from './api/client'
 import { useExerciseMapping } from './composables/useExerciseMapping'
 import { useUpdateAvailable } from './composables/useUpdateAvailable'
 import { useOnlineStatus } from './composables/useOnlineStatus'
@@ -27,18 +27,11 @@ const userLoading = ref(true)
 const mobileMenuOpen = ref(false)
 
 onMounted(async () => {
-  const stored = getStoredUsername()
-  if (stored) {
-    try {
-      const user = await getUser(stored)
-      if (user) {
-        currentUser.value = user
-      } else {
-        clearStoredUsername()
-      }
-    } catch {
-      // API down — passer au picker
-    }
+  try {
+    const user = await checkSession()
+    if (user) currentUser.value = user
+  } catch {
+    // API down — passer au picker
   }
   userLoading.value = false
 })
@@ -51,8 +44,8 @@ function onUserSelected(user) {
   inbody.load()
 }
 
-function changeUser() {
-  clearStoredUsername()
+async function changeUser() {
+  await apiLogout()
   currentUser.value = null
   workout.reset()
   measurement.reset()
