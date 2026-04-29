@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Line } from 'vue-chartjs'
 import { getDayKey, formatDateShort } from '../../utils/dateUtils'
 import { computeRecomp } from '../../composables/useCompareData'
@@ -59,9 +59,49 @@ function scansInPeriod(u) {
   return (u.scans ?? []).filter(s => s.scan_date >= props.startDate && s.scan_date <= props.endDate)
 }
 
+// Per-user selected scan index (defaults to last scan)
+const selectedIdx = ref({})
+
+watch(
+  () => usersWithScans.value,
+  (users) => {
+    users.forEach(u => {
+      const scans = scansInPeriod(u)
+      if (selectedIdx.value[u.username] === undefined || selectedIdx.value[u.username] >= scans.length) {
+        selectedIdx.value[u.username] = Math.max(0, scans.length - 1)
+      }
+    })
+  },
+  { immediate: true }
+)
+
 function lastScan(u) {
   const s = scansInPeriod(u)
   return s.length ? s[s.length - 1] : null
+}
+
+function selectedScan(u) {
+  const scans = scansInPeriod(u)
+  if (!scans.length) return null
+  const idx = selectedIdx.value[u.username] ?? scans.length - 1
+  return scans[Math.min(idx, scans.length - 1)]
+}
+
+function prevScan(u) {
+  const idx = selectedIdx.value[u.username] ?? 0
+  if (idx > 0) selectedIdx.value[u.username] = idx - 1
+}
+
+function nextScan(u) {
+  const scans = scansInPeriod(u)
+  const idx = selectedIdx.value[u.username] ?? scans.length - 1
+  if (idx < scans.length - 1) selectedIdx.value[u.username] = idx + 1
+}
+
+function scanNav(u) {
+  const scans = scansInPeriod(u)
+  const idx = selectedIdx.value[u.username] ?? scans.length - 1
+  return { current: idx + 1, total: scans.length }
 }
 
 function fmt(val, dec = 1, unit = '') {
@@ -160,28 +200,43 @@ function fmtDelta(v) {
         style="border: 1px solid var(--border);"
         :style="{ borderColor: u.color + '44' }"
       >
-        <div class="flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full flex-shrink-0" :style="{ backgroundColor: u.color }"></span>
-          <span class="text-xs font-medium truncate" :style="{ color: u.color }">{{ u.username }}</span>
+        <div class="flex items-center justify-between gap-1.5">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="w-2 h-2 rounded-full flex-shrink-0" :style="{ backgroundColor: u.color }"></span>
+            <span class="text-xs font-medium truncate" :style="{ color: u.color }">{{ u.username }}</span>
+          </div>
+          <div v-if="scanNav(u).total > 1" class="flex items-center gap-1 flex-shrink-0">
+            <button
+              @click="prevScan(u)"
+              :disabled="scanNav(u).current === 1"
+              class="w-4 h-4 flex items-center justify-center rounded text-text-muted hover:text-text-primary disabled:opacity-30"
+            >‹</button>
+            <span class="text-[10px] text-text-muted tabular-nums">{{ scanNav(u).current }}/{{ scanNav(u).total }}</span>
+            <button
+              @click="nextScan(u)"
+              :disabled="scanNav(u).current === scanNav(u).total"
+              class="w-4 h-4 flex items-center justify-center rounded text-text-muted hover:text-text-primary disabled:opacity-30"
+            >›</button>
+          </div>
         </div>
-        <template v-if="lastScan(u)">
-          <p class="text-[10px] text-text-muted">{{ formatDateShort(lastScan(u).scan_date) }}</p>
+        <template v-if="selectedScan(u)">
+          <p class="text-[10px] text-text-muted">{{ formatDateShort(selectedScan(u).scan_date) }}</p>
           <div class="space-y-1 text-xs">
             <div class="flex justify-between gap-2">
               <span class="text-text-muted">Poids</span>
-              <span class="font-medium">{{ fmt(lastScan(u).weight_kg, 1, 'kg') }}</span>
+              <span class="font-medium">{{ fmt(selectedScan(u).weight_kg, 1, 'kg') }}</span>
             </div>
             <div class="flex justify-between gap-2">
               <span class="text-text-muted">Muscle</span>
-              <span class="font-medium">{{ fmt(lastScan(u).skeletal_muscle_mass_kg, 1, 'kg') }}</span>
+              <span class="font-medium">{{ fmt(selectedScan(u).skeletal_muscle_mass_kg, 1, 'kg') }}</span>
             </div>
             <div class="flex justify-between gap-2">
               <span class="text-text-muted">Masse grasse</span>
-              <span class="font-medium">{{ fmt(lastScan(u).body_fat_mass_kg, 1, 'kg') }}</span>
+              <span class="font-medium">{{ fmt(selectedScan(u).body_fat_mass_kg, 1, 'kg') }}</span>
             </div>
             <div class="flex justify-between gap-2">
               <span class="text-text-muted">% graisse</span>
-              <span class="font-medium">{{ fmt(lastScan(u).body_fat_percent, 1, '%') }}</span>
+              <span class="font-medium">{{ fmt(selectedScan(u).body_fat_percent, 1, '%') }}</span>
             </div>
           </div>
         </template>
