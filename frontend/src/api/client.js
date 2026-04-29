@@ -54,7 +54,7 @@ async function request(path, options = {}) {
   const token = getStoredToken()
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(token ? { 'X-Session-Token': token } : {}),
     ...options.headers,
   }
 
@@ -68,12 +68,8 @@ async function request(path, options = {}) {
   if (!res.ok) {
     let body = null
     try { body = await res.json() } catch {}
-    // Token invalide / expiré → on nettoie le storage
     if (res.status === 401 || res.status === 403) {
-      const msg = body?.message || ''
-      if (msg.includes('JWT') || msg.includes('authenticated') || msg.includes('expired')) {
-        clearSession()
-      }
+      clearSession()
     }
     throw new ApiError(res.status, body)
   }
