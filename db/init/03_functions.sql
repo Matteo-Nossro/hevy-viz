@@ -126,12 +126,10 @@ GRANT EXECUTE ON FUNCTION api.whoami() TO anon;
 -- ── Auth : logout ───────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION api.logout() RETURNS VOID AS $$
 DECLARE
-  hdr TEXT;
   tok TEXT;
 BEGIN
-  hdr := current_setting('request.headers', true)::json->>'authorization';
-  IF hdr IS NULL OR position('Bearer ' in hdr) <> 1 THEN RETURN; END IF;
-  tok := substring(hdr from 8);
+  tok := current_setting('request.headers', true)::json->>'x-session-token';
+  IF tok IS NULL THEN RETURN; END IF;
   DELETE FROM api.sessions WHERE token_hash = digest(tok, 'sha256');
 END;
 $$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = api, pg_catalog;
@@ -162,7 +160,7 @@ BEGIN
   UPDATE api.users SET password_hash = crypt(new_pwd, gen_salt('bf', 10)) WHERE id = uid;
 
   -- Invalide toutes les autres sessions, garde la session courante
-  cur_tok := substring(current_setting('request.headers', true)::json->>'authorization' from 8);
+  cur_tok := current_setting('request.headers', true)::json->>'x-session-token';
   DELETE FROM api.sessions
    WHERE user_id = uid
      AND token_hash <> digest(cur_tok, 'sha256');

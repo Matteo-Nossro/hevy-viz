@@ -1,6 +1,6 @@
 -- Row Level Security : toutes les tables de données sont accédées via le rôle
 -- anon (PGRST_DB_ANON_ROLE=anon). L'autorisation est portée par
--- api.current_user_id() qui résout le header Authorization: Bearer <token>
+-- api.current_user_id() qui résout le header X-Session-Token
 -- contre la table api.sessions.
 
 ALTER TABLE api.workout_sets               ENABLE ROW LEVEL SECURITY;
@@ -8,20 +8,15 @@ ALTER TABLE api.measurements               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api.exercise_mapping_overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api.sessions                   ENABLE ROW LEVEL SECURITY;
 
--- ── Identité : résolution du Bearer token vers user_id ──────────────────────
+-- ── Identité : résolution du X-Session-Token vers user_id ───────────────────
 CREATE OR REPLACE FUNCTION api.current_user_id() RETURNS INT AS $$
 DECLARE
-  hdr  TEXT;
   tok  TEXT;
   th   BYTEA;
   uid  INT;
 BEGIN
-  hdr := current_setting('request.headers', true)::json->>'authorization';
-  IF hdr IS NULL OR position('Bearer ' in hdr) <> 1 THEN
-    RETURN NULL;
-  END IF;
-  tok := substring(hdr from 8);
-  IF length(tok) < 32 THEN RETURN NULL; END IF;
+  tok := current_setting('request.headers', true)::json->>'x-session-token';
+  IF tok IS NULL OR length(tok) < 32 THEN RETURN NULL; END IF;
   th  := digest(tok, 'sha256');
 
   SELECT s.user_id INTO uid
