@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { listUsers, getWorkoutSetsForUser, getInbodyScansForUser } from '../api/client'
 import { getWeekKey, getDayKey } from '../utils/dateUtils'
+import { normalizeExerciseName } from '../config/exerciseNormalization'
 
 export const USER_COLORS = ['#5eb8c4', '#b794f6', '#7ea7e8', '#67c994']
 
@@ -32,7 +33,7 @@ function parseSessionsFromRows(rows) {
       })
     }
     const session = map.get(key)
-    const title = row.exercise_title || ''
+    const title = normalizeExerciseName(row.exercise_title || '')
     if (!session.exercises.has(title)) session.exercises.set(title, [])
     session.exercises.get(title).push(row)
   }

@@ -4,6 +4,7 @@ import { parseFrenchDate, getWeekKey, getMonthKey, getDayKey, getWeekStart } fro
 import { getWorkoutSets, importWorkoutSets, clearWorkoutSets } from '../api/client'
 import { getMuscleGroups, MUSCLE_GROUPS, unmappedExercises } from '../config/muscleMapping'
 import { useExerciseMapping } from './useExerciseMapping'
+import { normalizeExerciseName } from '../config/exerciseNormalization'
 
 const WORKING_SET_TYPES = ['normal', 'failure', 'dropset']
 
@@ -68,7 +69,7 @@ function importCSV(file, replace = false) {
             start_time:       parseFrenchDate(row.start_time)?.toISOString() ?? null,
             end_time:         parseFrenchDate(row.end_time)?.toISOString() ?? null,
             description:      row.description || null,
-            exercise_title:   row.exercise_title || '',
+            exercise_title:   normalizeExerciseName(row.exercise_title || ''),
             superset_id:      row.superset_id || null,
             exercise_notes:   row.exercise_notes || null,
             set_index:        parseInt(row.set_index) || 0,
@@ -116,7 +117,7 @@ export function useWorkoutData() {
       title:           row.title || '',
       startTime:       row.start_time ? new Date(row.start_time) : null,
       endTime:         row.end_time   ? new Date(row.end_time)   : null,
-      exerciseTitle:   row.exercise_title || '',
+      exerciseTitle:   normalizeExerciseName(row.exercise_title || ''),
       supersetId:      row.superset_id || null,
       exerciseNotes:   row.exercise_notes || '',
       setIndex:        parseInt(row.set_index) || 0,
